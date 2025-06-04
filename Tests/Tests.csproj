@@ -17,7 +17,7 @@
   </ItemGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\Simuload\Simuload.csproj" />
+    <ProjectReference Include="..\Simulate\Simulate.csproj" />
   </ItemGroup>
 
 </Project>
