@@ -54,13 +54,13 @@ public class SimulationTests
 
         var results = await new Simulation("test", async () =>
         {
-            await Task.Delay(100);
+            await Task.Delay(1000);
             return new Result(false);
         })
-        .RunFor(TimeSpan.FromSeconds(1))
+        .RunFor(TimeSpan.FromSeconds(3))
         .Run();
 
-        Assert.IsTrue((results.MeanDuration / 100) * 100 == 100);
+        Assert.IsTrue((results.MeanDuration / 1000) * 1000 == 1000);
     }
 
     [TestMethod]
