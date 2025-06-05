@@ -1,39 +1,41 @@
 ﻿using System.Diagnostics;
+using System.Diagnostics.Metrics;
 using Microsoft.Extensions.Logging;
-using OpenTelemetry.Logs;
-using OpenTelemetry.Resources;
 
-namespace Simuload;
+namespace Simulate;
 
-public record Result;
-public record Outcome;
+public record Result(bool Success);
 
-public class Simulation(Func<object, Task<Outcome>> scenario)
+public class Simulation(string name, Func<ILogger, Task<Result>> scenario)
 {
+    private static readonly string ServiceName = "Simulation";
+    private static readonly string ServiceVersion = "0.1.0";
 
-    public ILogger logger = LoggerFactory.Create(builder =>
-        {
-            builder.SetMinimumLevel(LogLevel.Information)
-                .AddOpenTelemetry(options =>
-                {
-                    options.SetResourceBuilder(ResourceBuilder.CreateDefault()
-                                .AddService("Simuload"))
-                                .AddConsoleExporter();
-                });
+    public static readonly ActivitySource ActivitySource = new(ServiceName, ServiceVersion);
+    public static readonly Meter Meter = new(ServiceName, ServiceVersion);
 
-        }).CreateLogger<Simulation>();
+    private static readonly Counter<long> SuccessCounter = Meter.CreateCounter<long>(
+        "simulation_success_total",
+        description: "Total number of successful simulations");
+
+    private readonly ILogger Logger = LoggerFactory.Create(builder =>
+    {
+        builder.SetMinimumLevel(LogLevel.Information);
+    }).CreateLogger<Simulation>();
 
     public async Task Run()
     {
+        using var activity = ActivitySource.StartActivity(name);
 
-        Stopwatch sw = new();
+        var sw = Stopwatch.StartNew();
 
-        logger.LogTrace("Starting simulation");
-        sw.Start();
-        await scenario.Invoke(logger);
+        var result = await scenario.Invoke(Logger);
+
+        if (result.Success)
+        {
+            SuccessCounter.Add(1, KeyValuePair.Create<string, object?>("scenario", name));
+        }
+
         sw.Stop();
-        logger.LogTrace("Ending simulation");
-        logger.LogInformation($"Elapsed={sw.Elapsed}");
     }
-
-};
+}
