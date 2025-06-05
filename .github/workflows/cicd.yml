@@ -24,7 +24,7 @@ jobs:
       - name: Test project
         run: dotnet test --configuration Release --no-build
 
-      - name: Pack NuGet package with tag version
+      - name: Pack NuGet package
         run: dotnet pack --configuration Release --no-build --output ./nupkg
 
       - name: Push to NuGet.org

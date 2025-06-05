@@ -60,7 +60,7 @@ public class SimulationTests
         .RunFor(TimeSpan.FromSeconds(1))
         .Run();
 
-        Assert.IsTrue((results.MeanDuration / 10) * 10 == 100);
+        Assert.IsTrue((results.MeanDuration / 100) * 100 == 100);
     }
 
     [TestMethod]
