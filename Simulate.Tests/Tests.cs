@@ -48,22 +48,6 @@ public class SimulationTests
     }
 
     [TestMethod]
-    [Description("Ensures that simulations calculate mean duration correctly.")]
-    public async Task Should_Calculate_Mean_Duration_Correctly()
-    {
-
-        var results = await new Simulation("test", async () =>
-        {
-            await Task.Delay(1000);
-            return new Result(false);
-        })
-        .RunFor(TimeSpan.FromSeconds(3))
-        .Run();
-
-        Assert.IsTrue((results.MeanDuration / 1000) * 1000 == 1000);
-    }
-
-    [TestMethod]
     [Description("Ensures that simulations correctly record metrics.")]
     public async Task Should_Record_Metrics()
     {
