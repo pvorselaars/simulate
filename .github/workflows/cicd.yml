@@ -1,0 +1,35 @@
+name: Publish package
+
+on:
+  push:
+    tags:
+      - "v*"
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 9.x
+
+      - name: Extract version from tag
+        id: get_version
+        run: echo "VERSION=${GITHUB_REF#refs/tags/v}" >> $GITHUB_ENV
+
+      - name: Build project
+        run: dotnet build --configuration Release
+
+      - name: Test project
+        run: dotnet test --configuration Release --no-build
+
+      - name: Pack NuGet package with tag version
+        run: dotnet pack --configuration Release --no-build --output ./nupkg /p:PackageVersion=${{ env.VERSION }}
+
+      - name: Push to NuGet.org
+        run: dotnet nuget push ./nupkg/*.nupkg --source https://api.nuget.org/v3/index.json --api-key ${{ secrets.NUGET_API_KEY }}
