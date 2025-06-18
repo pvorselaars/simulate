@@ -18,14 +18,11 @@ jobs:
         with:
           dotnet-version: 9.x
 
-      - name: Build project
-        run: dotnet build --configuration Release
-
-      - name: Test project
-        run: dotnet test --configuration Release --no-build
+      - name: Build and test project
+        run: dotnet test --configuration Release
 
       - name: Pack NuGet package
-        run: dotnet pack --configuration Release --no-build --output ./nupkg
+        run: dotnet pack --no-build --output ./nupkg
 
       - name: Push to NuGet.org
         run: dotnet nuget push ./nupkg/*.nupkg --source https://api.nuget.org/v3/index.json --api-key ${{ secrets.NUGET_API_KEY }}
