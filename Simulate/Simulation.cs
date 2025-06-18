@@ -188,7 +188,7 @@ namespace Simulate
                 } while (stopwatch.Elapsed < interval.Duration);
             }
 
-            Results.meanDuration = Results.Duration / Results.Total;
+            Results.meanDuration = Results.Total > 0 ? Results.Duration / Results.Total : 0;
 
             return Results;
         }
