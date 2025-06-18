@@ -171,11 +171,11 @@ public class SimulationTests
 
         var results = await new Simulation("test", async () =>
         {
-            await Task.Delay(1000);
+            await Task.Delay(0);
             return new Result(true);
         })
-        .RunFor(duration: TimeSpan.FromSeconds(3), copies: 1, rate: 1)
-        .RunFor(duration: TimeSpan.FromSeconds(3), copies: 1, rate: 1)
+        .RunFor(duration: TimeSpan.Zero, copies: 6)
+        .RunFor(duration: TimeSpan.Zero, copies: 6)
         .Run();
 
         Assert.IsTrue(results.Successes == 12);
