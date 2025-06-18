@@ -24,8 +24,8 @@ namespace Simulate
     /// <param name="scenario">The asynchronous simulation function to execute.</param>
     public class Simulation(string name, Func<ValueTask<Result>> scenario)
     {
-        private static readonly string ServiceName = "Simulate";
-        private static readonly string ServiceVersion = "0.0.1";
+        private const string ServiceName = "Simulate";
+        private const string ServiceVersion = "0.0.1";
 
         private static readonly ActivitySource ActivitySource = new(ServiceName, ServiceVersion);
         private static readonly Meter Meter = new(ServiceName, ServiceVersion);
@@ -33,7 +33,6 @@ namespace Simulate
         private static readonly Counter<long> FailureCounter = Meter.CreateCounter<long>("simulations.fail", description: "Total number of failed simulations");
         private static readonly Histogram<long> DurationHistogram = Meter.CreateHistogram<long>("simulations.duration", unit: "ms", description: "Duration of simulations in milliseconds");
 
-        private readonly string _name = name;
         private readonly List<SimulationInterval> intervals = [];
 
         /// <summary>
@@ -46,14 +45,14 @@ namespace Simulate
         /// </summary>
         private async Task Simulate(double copies)
         {
-            var tags = KeyValuePair.Create<string, object?>("scenario", _name);
+            var tags = KeyValuePair.Create<string, object?>("scenario", name);
             var simulations = new List<Task<Result>>();
 
             for (long i = 0; i < copies; i++)
             {
                 var simulation = Task.Run(async () =>
                 {
-                    using var activity = ActivitySource.StartActivity(_name);
+                    using var activity = ActivitySource.StartActivity(name);
 
                     var sw = Stopwatch.StartNew();
 
