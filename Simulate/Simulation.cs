@@ -46,7 +46,7 @@ namespace Simulate
         private async Task Simulate(double copies)
         {
             var tags = KeyValuePair.Create<string, object?>("scenario", name);
-            var simulations = new List<Task<Result>>();
+            var simulations = new List<Task<Result>>(capacity: (int)copies);
 
             for (long i = 0; i < copies; i++)
             {
