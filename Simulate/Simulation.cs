@@ -24,8 +24,8 @@ namespace Simulate
     /// <param name="scenario">The asynchronous simulation function to execute.</param>
     public class Simulation(string name, Func<ValueTask<Result>> scenario)
     {
-        private static readonly string ServiceName = "Simulate";
-        private static readonly string ServiceVersion = "0.0.1";
+        private const string ServiceName = "Simulate";
+        private const string ServiceVersion = "0.0.1";
 
         private static readonly ActivitySource ActivitySource = new(ServiceName, ServiceVersion);
         private static readonly Meter Meter = new(ServiceName, ServiceVersion);
@@ -33,32 +33,30 @@ namespace Simulate
         private static readonly Counter<long> FailureCounter = Meter.CreateCounter<long>("simulations.fail", description: "Total number of failed simulations");
         private static readonly Histogram<long> DurationHistogram = Meter.CreateHistogram<long>("simulations.duration", unit: "ms", description: "Duration of simulations in milliseconds");
 
-        private readonly string _name = name;
-        private readonly Func<ValueTask<Result>> _scenario = scenario;
         private readonly List<SimulationInterval> intervals = [];
 
         /// <summary>
         /// Gets the aggregated results of the simulation runs.
         /// </summary>
-        public SimulationResults Results { get; } = new SimulationResults(name);
+        public SimulationResults Results { get; } = new(name);
 
         /// <summary>
         /// Executes the simulation copies in parallel, collecting metrics and results.
         /// </summary>
         private async Task Simulate(double copies)
         {
-            var tags = KeyValuePair.Create<string, object?>("scenario", _name);
-            var simulations = new List<Task<Result>>();
+            var tags = KeyValuePair.Create<string, object?>("scenario", name);
+            var simulations = new List<Task<Result>>(capacity: (int)copies);
 
             for (long i = 0; i < copies; i++)
             {
                 var simulation = Task.Run(async () =>
                 {
-                    using var activity = ActivitySource.StartActivity(_name);
+                    using var activity = ActivitySource.StartActivity(name);
 
                     var sw = Stopwatch.StartNew();
 
-                    var result = await _scenario.Invoke();
+                    var result = await scenario.Invoke();
 
                     sw.Stop();
 
@@ -208,13 +206,13 @@ namespace Simulate
         /// Configures the simulation to run for a given duration, initial number of copies, and rate of increase.
         /// </summary>
         /// <param name="duration">Duration to run the simulation for.</param>
-        /// <param name="copies">Initial number of simulation copies per iteration (minimum 1).</param>
+        /// <param name="copies">Initial number of simulation copies per iteration (minimum 0).</param>
         /// <param name="rate">Rate to increase the number of copies per second.</param>
         /// <returns>The current simulation instance for fluent chaining.</returns>
         public Simulation RunFor(TimeSpan duration, long copies = 1, double rate = 0)
         {
-            if (copies < 1)
-                copies = 1;
+            if (copies < 0)
+                throw new ArgumentOutOfRangeException("A negative number of simulation copies is not supported.");
 
             intervals.Add(new SimulationInterval(duration, copies, rate));
 
