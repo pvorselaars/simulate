@@ -38,7 +38,7 @@ namespace Simulate
         /// <summary>
         /// Gets the aggregated results of the simulation runs.
         /// </summary>
-        public SimulationResults Results { get; } = new SimulationResults(name);
+        public SimulationResults Results { get; } = new(name);
 
         /// <summary>
         /// Executes the simulation copies in parallel, collecting metrics and results.
