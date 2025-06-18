@@ -34,7 +34,6 @@ namespace Simulate
         private static readonly Histogram<long> DurationHistogram = Meter.CreateHistogram<long>("simulations.duration", unit: "ms", description: "Duration of simulations in milliseconds");
 
         private readonly string _name = name;
-        private readonly Func<ValueTask<Result>> _scenario = scenario;
         private readonly List<SimulationInterval> intervals = [];
 
         /// <summary>
@@ -58,7 +57,7 @@ namespace Simulate
 
                     var sw = Stopwatch.StartNew();
 
-                    var result = await _scenario.Invoke();
+                    var result = await scenario.Invoke();
 
                     sw.Stop();
 
