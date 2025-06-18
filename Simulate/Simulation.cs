@@ -206,13 +206,13 @@ namespace Simulate
         /// Configures the simulation to run for a given duration, initial number of copies, and rate of increase.
         /// </summary>
         /// <param name="duration">Duration to run the simulation for.</param>
-        /// <param name="copies">Initial number of simulation copies per iteration (minimum 1).</param>
+        /// <param name="copies">Initial number of simulation copies per iteration (minimum 0).</param>
         /// <param name="rate">Rate to increase the number of copies per second.</param>
         /// <returns>The current simulation instance for fluent chaining.</returns>
         public Simulation RunFor(TimeSpan duration, long copies = 1, double rate = 0)
         {
-            if (copies < 1)
-                copies = 1;
+            if (copies < 0)
+                throw new ArgumentOutOfRangeException("A negative number of simulation copies is not supported.");
 
             intervals.Add(new SimulationInterval(duration, copies, rate));
 
