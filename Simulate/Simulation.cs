@@ -43,10 +43,10 @@ namespace Simulate
         /// <summary>
         /// Executes the simulation copies in parallel, collecting metrics and results.
         /// </summary>
-        private async Task Simulate(int copies)
+        private async Task Simulate(double copies)
         {
             var tags = KeyValuePair.Create<string, object?>("scenario", name);
-            var simulations = new List<Task<Result>>(capacity: copies);
+            var simulations = new List<Task<Result>>(capacity: (int)copies);
 
             for (long i = 0; i < copies; i++)
             {
@@ -183,7 +183,7 @@ namespace Simulate
                 do
                 {
                     var delta = Stopwatch.StartNew();
-                    await Simulate((int)interval.Copies);
+                    await Simulate(interval.Copies);
                     interval.Copies += interval.Rate * delta.Elapsed.TotalSeconds;
                 } while (stopwatch.Elapsed < interval.Duration);
             }
