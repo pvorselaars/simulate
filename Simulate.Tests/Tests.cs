@@ -78,7 +78,7 @@ public class SimulationTests
 
         var results = await new Simulation("test", async () =>
         {
-            await Task.Delay(10);
+            await Task.Delay(0);
             return new Result(true);
         })
         .Run();
@@ -119,14 +119,14 @@ public class SimulationTests
 
         var results = await new Simulation("test", async () =>
         {
-            await Task.Delay(10);
+            await Task.Delay(0);
             return new Result(true);
         })
         .Run();
 
         activityListener.Dispose();
 
-        Assert.IsTrue(recordedActivities.Count == 1);
+        Assert.IsTrue(recordedActivities.Count == 1, $"Expected 1 recorded activity but got { recordedActivities.Count}");
     }
 
     [TestMethod]
@@ -136,17 +136,18 @@ public class SimulationTests
 
         var results = await new Simulation("test", async () =>
         {
-            await Task.Delay(1000);
+            await Task.Delay(100);
             return new Result(true);
         })
-        .RunFor(TimeSpan.FromSeconds(3), 1)
+        .RunFor(TimeSpan.FromMilliseconds(1000), 1)
         .Run();
 
-        Assert.IsTrue(results.Successes == 3);
+
+        Assert.IsTrue(results.Successes == 10, $"Expected 10 successes but got {results.Successes}");
     }
 
     [TestMethod]
-    [Description("Ensures that simulations correctly increase the rate.")]
+    [Description("Ensures that simulations correctly increase the rate: r = t + 1 for 0 < t < 3")]
     public async Task Should_Increase_Rate()
     {
 
@@ -155,10 +156,11 @@ public class SimulationTests
             await Task.Delay(1000);
             return new Result(true);
         })
-        .RunFor(duration: TimeSpan.FromSeconds(3), copies: 1, rate: 1)
+        .RunFor(duration: TimeSpan.FromSeconds(3), copies: 0, rate: 1)
         .Run();
 
-        Assert.IsTrue(results.Successes == 6);
+
+        Assert.IsTrue(results.Successes == 3, $"Expected 3 successes but got {results.Successes}");
     }
 
     [TestMethod]
@@ -168,14 +170,14 @@ public class SimulationTests
 
         var results = await new Simulation("test", async () =>
         {
-            await Task.Delay(1000);
+            await Task.Delay(0);
             return new Result(true);
         })
-        .RunFor(duration: TimeSpan.FromSeconds(3), copies: 1, rate: 1)
-        .RunFor(duration: TimeSpan.FromSeconds(3), copies: 1, rate: 1)
+        .RunFor(duration: TimeSpan.Zero, copies: 6)
+        .RunFor(duration: TimeSpan.Zero, copies: 6)
         .Run();
 
-        Assert.IsTrue(results.Successes == 12);
+        Assert.IsTrue(results.Successes == 12, $"Expected 12 successes but got {results.Successes}");
     }
 
 }

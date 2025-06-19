@@ -176,24 +176,15 @@ namespace Simulate
             {
                 var stopwatch = Stopwatch.StartNew();
 
-                if (interval.Duration.TotalSeconds > 0)
+                do
                 {
-                    while (stopwatch.Elapsed < interval.Duration)
-                    {
-                        double deltaSeconds = stopwatch.Elapsed.TotalSeconds;
-
-                        await Simulate(interval.Copies);
-
-                        interval.Copies += interval.Rate * deltaSeconds;
-                    }
-                }
-                else
-                {
+                    var delta = Stopwatch.StartNew();
                     await Simulate(interval.Copies);
-                }
+                    interval.Copies += interval.Rate * delta.Elapsed.TotalSeconds;
+                } while (stopwatch.Elapsed < interval.Duration);
             }
 
-            Results.meanDuration = Results.Duration / Results.Total;
+            Results.meanDuration = Results.Total > 0 ? Results.Duration / Results.Total : 0;
 
             return Results;
         }

@@ -4,6 +4,9 @@ on:
   push:
     branches:
       - main
+  pull_request:
+    branches:
+      - main
 
 jobs:
   cicd:
@@ -21,10 +24,8 @@ jobs:
       - name: Build and test project
         run: dotnet test --configuration Release
 
-      - name: Pack NuGet package
+      - name: Pack and push to NuGet.org
         if: github.event_name == 'push'
-        run: dotnet pack --no-build --output ./nupkg
-
-      - name: Push to NuGet.org
-        if: github.event_name == 'push'
-        run: dotnet nuget push ./nupkg/*.nupkg --source https://api.nuget.org/v3/index.json --api-key ${{ secrets.NUGET_API_KEY }}
+        run: |
+          dotnet pack --no-build --output ./nupkg
+          dotnet nuget push ./nupkg/*.nupkg --source https://api.nuget.org/v3/index.json --api-key ${{ secrets.NUGET_API_KEY }}
