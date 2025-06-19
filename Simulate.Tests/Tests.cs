@@ -1,9 +1,6 @@
 ﻿using System.Diagnostics.Metrics;
 using System.Collections.Generic;
-using System.Threading.Tasks;
 using System.Diagnostics;
-using System.Linq;
-using System;
 
 namespace Simulate.Tests;
 
