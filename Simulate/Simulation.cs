@@ -52,7 +52,17 @@ namespace Simulate
 
                     var sw = Stopwatch.StartNew();
 
-                    var result = await scenario.Invoke();
+                    Result result;
+
+                    try
+                    {
+                        result = await scenario.Invoke();
+                    }
+                    catch
+                    {
+                        result = new Result(false);
+                    }
+
 
                     sw.Stop();
 

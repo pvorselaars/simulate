@@ -45,6 +45,21 @@ public class SimulationTests
     }
 
     [TestMethod]
+    [Description("Ensures that simulations that throw fail correctly without options.")]
+    public async Task Uncaught_Exception_Should_Fail_Correctly_By_Default()
+    {
+
+        var results = await new Simulation("test", () =>
+        {
+            throw new Exception();
+        })
+        .Run();
+
+        Assert.IsTrue(results.Successes == 0);
+        Assert.IsTrue(results.Failures == 1);
+    }
+
+    [TestMethod]
     [Description("Ensures that simulations correctly record metrics.")]
     public async Task Should_Record_Metrics()
     {
