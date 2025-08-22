@@ -1,9 +1,5 @@
 ﻿using System.Diagnostics.Metrics;
-using System.Collections.Generic;
-using System.Threading.Tasks;
 using System.Diagnostics;
-using System.Linq;
-using System;
 
 namespace Simulate.Tests;
 
@@ -27,8 +23,8 @@ public class SimulationTests
         })
         .Run();
 
-        Assert.IsTrue(results.Successes == 1);
-        Assert.IsTrue(results.Failures == 0);
+        Assert.AreEqual(1, results.Successes);
+        Assert.AreEqual(0, results.Failures);
     }
 
     [TestMethod]
@@ -43,8 +39,23 @@ public class SimulationTests
         })
         .Run();
 
-        Assert.IsTrue(results.Successes == 0);
-        Assert.IsTrue(results.Failures == 1);
+        Assert.AreEqual(0, results.Successes);
+        Assert.AreEqual(1, results.Failures);
+    }
+
+    [TestMethod]
+    [Description("Ensures that simulations that throw fail correctly without options.")]
+    public async Task Uncaught_Exception_Should_Fail_Correctly_By_Default()
+    {
+
+        var results = await new Simulation("test", () =>
+        {
+            throw new Exception();
+        })
+        .Run();
+
+        Assert.AreEqual(0, results.Successes);
+        Assert.AreEqual(1, results.Failures);
     }
 
     [TestMethod]
@@ -98,8 +109,8 @@ public class SimulationTests
             .Where(m => m.Tags.Any(t => t.Key == "scenario" && (string?)t.Value == "test"))
             .Sum(m => Convert.ToInt64(m.Value));
 
-        Assert.AreEqual(1, totalSuccesses, "Total success count does not match.");
-        Assert.AreEqual(0, totalFailures, "Total failure count does not match.");
+        Assert.AreEqual(1, totalSuccesses);
+        Assert.AreEqual(0, totalFailures);
     }
 
     [TestMethod]
@@ -129,7 +140,7 @@ public class SimulationTests
 
         activityListener.Dispose();
 
-        Assert.IsTrue(recordedActivities.Count == 1, $"Expected 1 recorded activity but got { recordedActivities.Count}");
+        Assert.AreEqual(1, recordedActivities.Count);
     }
 
     [TestMethod]
@@ -145,8 +156,7 @@ public class SimulationTests
         .RunFor(TimeSpan.FromMilliseconds(1000), 1)
         .Run();
 
-
-        Assert.IsTrue(results.Successes == 10, $"Expected 10 successes but got {results.Successes}");
+        Assert.AreEqual(10, results.Successes);
     }
 
     [TestMethod]
@@ -162,8 +172,7 @@ public class SimulationTests
         .RunFor(duration: TimeSpan.FromSeconds(3), copies: 0, rate: 1)
         .Run();
 
-
-        Assert.IsTrue(results.Successes == 3, $"Expected 3 successes but got {results.Successes}");
+        Assert.AreEqual(3, results.Successes);
     }
 
     [TestMethod]
@@ -180,7 +189,7 @@ public class SimulationTests
         .RunFor(duration: TimeSpan.Zero, copies: 6)
         .Run();
 
-        Assert.IsTrue(results.Successes == 12, $"Expected 12 successes but got {results.Successes}");
+        Assert.AreEqual(12, results.Successes);
     }
 
 }

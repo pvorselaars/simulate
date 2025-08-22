@@ -1,9 +1,5 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Diagnostics;
+﻿using System.Diagnostics;
 using System.Diagnostics.Metrics;
-using System.Threading;
-using System.Threading.Tasks;
 
 namespace Simulate
 {
@@ -56,7 +52,17 @@ namespace Simulate
 
                     var sw = Stopwatch.StartNew();
 
-                    var result = await scenario.Invoke();
+                    Result result;
+
+                    try
+                    {
+                        result = await scenario.Invoke();
+                    }
+                    catch
+                    {
+                        result = new Result(false);
+                    }
+
 
                     sw.Stop();
 
