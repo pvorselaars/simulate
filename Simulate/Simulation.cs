@@ -180,12 +180,11 @@ namespace Simulate
             {
                 var stopwatch = Stopwatch.StartNew();
 
-                do
+                while (stopwatch.Elapsed < interval.Duration)
                 {
-                    var delta = Stopwatch.StartNew();
-                    await Simulate(interval.Copies);
-                    interval.Copies += interval.Rate * delta.Elapsed.TotalSeconds;
-                } while (stopwatch.Elapsed < interval.Duration);
+                    var copies = Math.Floor(stopwatch.Elapsed.TotalSeconds * interval.Rate);
+                    await Simulate(interval.Copies + copies);
+                }
             }
 
             Results.meanDuration = Results.Total > 0 ? Results.Duration / Results.Total : 0;
