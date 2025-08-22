@@ -10,7 +10,7 @@
     <PackageTags>performance;load;simulation;experiment</PackageTags>
     <RepositoryUrl>https://github.com/pvorselaars/simulate</RepositoryUrl>
     <PackageLicenseExpression>MIT</PackageLicenseExpression>
-    <PackageReadmeFile>readme.md</PackageReadmeFile>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
   </PropertyGroup>
 
   <ItemGroup>
