@@ -55,7 +55,8 @@ public class SimulationTests
         })
         .Run();
 
-        Assert.IsTrue(results.Successes == 0);
+        Assert.AreEqual(0, results.Successes);
+        Assert.AreEqual(1, results.Failures);
         Assert.IsTrue(results.Failures == 1);
     }
 
