@@ -178,8 +178,14 @@ namespace Simulate
 
             foreach (var interval in intervals)
             {
-                var stopwatch = Stopwatch.StartNew();
+                if (interval.Duration == TimeSpan.Zero)
+                {
+                    await Simulate(interval.Copies);
+                    continue;
+                }
 
+
+                var stopwatch = Stopwatch.StartNew();
                 while (stopwatch.Elapsed < interval.Duration)
                 {
                     var copies = Math.Floor(stopwatch.Elapsed.TotalSeconds * interval.Rate);
