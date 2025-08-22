@@ -156,6 +156,7 @@ public class SimulationTests
         .RunFor(TimeSpan.FromMilliseconds(1000), 1)
         .Run();
 
+
         Assert.AreEqual(10, results.Successes);
     }
 
