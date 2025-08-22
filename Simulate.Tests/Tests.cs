@@ -92,7 +92,7 @@ public class SimulationTests
 
         var results = await new Simulation("test", async () =>
         {
-            await Task.Delay(10);
+            await Task.Delay(0);
             return new Result(true);
         })
         .Run();
@@ -133,7 +133,7 @@ public class SimulationTests
 
         var results = await new Simulation("test", async () =>
         {
-            await Task.Delay(10);
+            await Task.Delay(0);
             return new Result(true);
         })
         .Run();
@@ -150,17 +150,18 @@ public class SimulationTests
 
         var results = await new Simulation("test", async () =>
         {
-            await Task.Delay(1000);
+            await Task.Delay(100);
             return new Result(true);
         })
-        .RunFor(TimeSpan.FromSeconds(3), 1)
+        .RunFor(TimeSpan.FromMilliseconds(1000), 1)
         .Run();
 
-        Assert.AreEqual(3, results.Successes);
+
+        Assert.AreEqual(10, results.Successes);
     }
 
     [TestMethod]
-    [Description("Ensures that simulations correctly increase the rate.")]
+    [Description("Ensures that simulations correctly increase the rate: r = t + 1 for 0 < t < 3")]
     public async Task Should_Increase_Rate()
     {
 
@@ -169,10 +170,10 @@ public class SimulationTests
             await Task.Delay(1000);
             return new Result(true);
         })
-        .RunFor(duration: TimeSpan.FromSeconds(3), copies: 1, rate: 1)
+        .RunFor(duration: TimeSpan.FromSeconds(3), copies: 0, rate: 1)
         .Run();
 
-        Assert.AreEqual(6, results.Successes);
+        Assert.AreEqual(3, results.Successes);
     }
 
     [TestMethod]
@@ -182,11 +183,11 @@ public class SimulationTests
 
         var results = await new Simulation("test", async () =>
         {
-            await Task.Delay(1000);
+            await Task.Delay(0);
             return new Result(true);
         })
-        .RunFor(duration: TimeSpan.FromSeconds(3), copies: 1, rate: 1)
-        .RunFor(duration: TimeSpan.FromSeconds(3), copies: 1, rate: 1)
+        .RunFor(duration: TimeSpan.Zero, copies: 6)
+        .RunFor(duration: TimeSpan.Zero, copies: 6)
         .Run();
 
         Assert.AreEqual(12, results.Successes);

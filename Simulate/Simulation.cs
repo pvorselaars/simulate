@@ -184,26 +184,22 @@ namespace Simulate
 
             foreach (var interval in intervals)
             {
-                var stopwatch = Stopwatch.StartNew();
-
-                if (interval.Duration.TotalSeconds > 0)
-                {
-                    while (stopwatch.Elapsed < interval.Duration)
-                    {
-                        double deltaSeconds = stopwatch.Elapsed.TotalSeconds;
-
-                        await Simulate(interval.Copies);
-
-                        interval.Copies += interval.Rate * deltaSeconds;
-                    }
-                }
-                else
+                if (interval.Duration == TimeSpan.Zero)
                 {
                     await Simulate(interval.Copies);
+                    continue;
+                }
+
+
+                var stopwatch = Stopwatch.StartNew();
+                while (stopwatch.Elapsed < interval.Duration)
+                {
+                    var copies = Math.Floor(stopwatch.Elapsed.TotalSeconds * interval.Rate);
+                    await Simulate(interval.Copies + copies);
                 }
             }
 
-            Results.meanDuration = Results.Duration / Results.Total;
+            Results.meanDuration = Results.Total > 0 ? Results.Duration / Results.Total : 0;
 
             return Results;
         }
