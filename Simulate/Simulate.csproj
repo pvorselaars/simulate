@@ -2,13 +2,11 @@
 
   <PropertyGroup>
     <TargetFramework>net9.0</TargetFramework>
-    <Version>0.0.2</Version>
+    <Version>0.0.3</Version>
     <Nullable>enable</Nullable>
     <ImplicitUsings>true</ImplicitUsings>
     <PackageId>Simulate</PackageId>
     <Authors>Perry Vorselaars</Authors>
-    <Company>VDS</Company>
-    <Description>A simple package to perform (load) simulations</Description>
     <PackageTags>performance;load;simulation;experiment</PackageTags>
     <RepositoryUrl>https://github.com/pvorselaars/simulate</RepositoryUrl>
     <PackageLicenseExpression>MIT</PackageLicenseExpression>
