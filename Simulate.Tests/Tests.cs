@@ -1,5 +1,4 @@
 ﻿using System.Diagnostics.Metrics;
-using System.Collections.Generic;
 using System.Diagnostics;
 
 namespace Simulate.Tests;
@@ -24,8 +23,8 @@ public class SimulationTests
         })
         .Run();
 
-        Assert.IsTrue(results.Successes == 1);
-        Assert.IsTrue(results.Failures == 0);
+        Assert.AreEqual(1, results.Successes);
+        Assert.AreEqual(0, results.Failures);
     }
 
     [TestMethod]
@@ -40,8 +39,8 @@ public class SimulationTests
         })
         .Run();
 
-        Assert.IsTrue(results.Successes == 0);
-        Assert.IsTrue(results.Failures == 1);
+        Assert.AreEqual(0, results.Successes);
+        Assert.AreEqual(1, results.Failures);
     }
 
     [TestMethod]
@@ -57,7 +56,6 @@ public class SimulationTests
 
         Assert.AreEqual(0, results.Successes);
         Assert.AreEqual(1, results.Failures);
-        Assert.IsTrue(results.Failures == 1);
     }
 
     [TestMethod]
@@ -111,8 +109,8 @@ public class SimulationTests
             .Where(m => m.Tags.Any(t => t.Key == "scenario" && (string?)t.Value == "test"))
             .Sum(m => Convert.ToInt64(m.Value));
 
-        Assert.AreEqual(1, totalSuccesses, "Total success count does not match.");
-        Assert.AreEqual(0, totalFailures, "Total failure count does not match.");
+        Assert.AreEqual(1, totalSuccesses);
+        Assert.AreEqual(0, totalFailures);
     }
 
     [TestMethod]
@@ -142,7 +140,7 @@ public class SimulationTests
 
         activityListener.Dispose();
 
-        Assert.IsTrue(recordedActivities.Count == 1);
+        Assert.AreEqual(1, recordedActivities.Count);
     }
 
     [TestMethod]
@@ -158,7 +156,7 @@ public class SimulationTests
         .RunFor(TimeSpan.FromSeconds(3), 1)
         .Run();
 
-        Assert.IsTrue(results.Successes == 3);
+        Assert.AreEqual(3, results.Successes);
     }
 
     [TestMethod]
@@ -174,7 +172,7 @@ public class SimulationTests
         .RunFor(duration: TimeSpan.FromSeconds(3), copies: 1, rate: 1)
         .Run();
 
-        Assert.IsTrue(results.Successes == 6);
+        Assert.AreEqual(6, results.Successes);
     }
 
     [TestMethod]
@@ -191,7 +189,7 @@ public class SimulationTests
         .RunFor(duration: TimeSpan.FromSeconds(3), copies: 1, rate: 1)
         .Run();
 
-        Assert.IsTrue(results.Successes == 12);
+        Assert.AreEqual(12, results.Successes);
     }
 
 }
