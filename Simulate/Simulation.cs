@@ -1,5 +1,6 @@
 ﻿using System.Diagnostics;
 using System.Diagnostics.Metrics;
+using Microsoft.Extensions.Logging;
 
 namespace Simulate
 {
@@ -18,23 +19,45 @@ namespace Simulate
     /// </remarks>
     /// <param name="name">The name of the simulation scenario.</param>
     /// <param name="scenario">The asynchronous simulation function to execute.</param>
-    public class Simulation(string name, Func<ValueTask<Result>> scenario)
+    public class Simulation
     {
         private const string ServiceName = "Simulate";
-        private const string ServiceVersion = "0.0.1";
+        private const string ServiceVersion = "0.0.5";
+
+        private readonly Func<ILogger, ValueTask<Result>> scenario;
+        private readonly string name;
 
         private static readonly ActivitySource ActivitySource = new(ServiceName, ServiceVersion);
         private static readonly Meter Meter = new(ServiceName, ServiceVersion);
+        private readonly ILogger Logger;
         private static readonly Counter<long> SuccessCounter = Meter.CreateCounter<long>("simulations.ok", description: "Total number of successful simulations");
         private static readonly Counter<long> FailureCounter = Meter.CreateCounter<long>("simulations.fail", description: "Total number of failed simulations");
         private static readonly Histogram<long> DurationHistogram = Meter.CreateHistogram<long>("simulations.duration", unit: "ms", description: "Duration of simulations in milliseconds");
+
+        public Simulation(string name,
+                          Func<ILogger, ValueTask<Result>> scenario,
+                          ILoggerFactory? loggerFactory = null)
+        {
+            this.name = name;
+            this.scenario = scenario;
+
+            // Use provided factory or default to console
+            loggerFactory ??= LoggerFactory.Create(builder =>
+            {
+                builder.SetMinimumLevel(LogLevel.Information);
+                builder.AddConsole();
+            });
+
+            Logger = loggerFactory.CreateLogger<Simulation>();
+            Results = new SimulationResults(name);
+        }
 
         private readonly List<SimulationInterval> intervals = [];
 
         /// <summary>
         /// Gets the aggregated results of the simulation runs.
         /// </summary>
-        public SimulationResults Results { get; } = new(name);
+        public SimulationResults Results { get; }
 
         /// <summary>
         /// Executes the simulation copies in parallel, collecting metrics and results.
@@ -56,10 +79,11 @@ namespace Simulate
 
                     try
                     {
-                        result = await scenario.Invoke();
+                        result = await scenario.Invoke(Logger);
                     }
-                    catch
+                    catch (Exception e)
                     {
+                        Logger.LogError(e, "Scenario '{Scenario}' failed:", name);
                         result = new Result(false);
                     }
 

@@ -24,8 +24,9 @@ dotnet add package Simulate
 ## 🚀 Usage
 
 ```csharp
-var simulation = await new Simulation("example", async () =>
+var simulation = await new Simulation("example", async logger =>
 {
+    logger.LogInformation("Relevant information");
     await Task.Delay(100); // Simulated task
     return new Result(true); // Simulation result
 })
@@ -64,7 +65,7 @@ using OpenTelemetry.Logs;
 using Microsoft.Extensions.Logging;
 
 var serviceName = "Simulate";
-var serviceVersion = "1.0.0";
+var serviceVersion = "0.0.5";
 
 // Configure logging
 using var loggerFactory = LoggerFactory.Create(builder =>
@@ -92,29 +93,27 @@ using var meterProvider = Sdk.CreateMeterProviderBuilder()
         .AddService(serviceName: serviceName, serviceVersion: serviceVersion))
     .AddConsoleExporter()
     .Build();
+
+// Configure logging
+using var loggerFactory = LoggerFactory.Create(builder =>
+                            {
+                                builder.AddOpenTelemetry(logging =>
+                                {
+                                    logging.AddOtlpExporter(options => options.Endpoint = new Uri("http://your-otlp-endpoint:4317"));
+                                }
+                            });
 ```
 
 Place this configuration before running your simulation:
 
 ```csharp
-await new Simulation("example", async () =>
+await new Simulation("example", async _ =>
 {
     await Task.Delay(100);
     return new Result(true);
-})
+}, loggerFactory)
 .RunFor(TimeSpan.FromSeconds(3), copies: 5, rate: 2)
 .Run();
-```
-
-### Console Output Sample
-
-```
-Activity.TraceId: 1234abcd
-Activity.SpanId: abcd1234
-Activity.DisplayName: example
-Activity.Duration: 00:00:00.1000000
-Metric: simulations.ok => 1
-Metric: simulations.duration => 100ms
 ```
 
 ## 🧪 Testing
