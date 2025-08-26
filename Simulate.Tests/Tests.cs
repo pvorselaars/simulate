@@ -16,7 +16,7 @@ public class SimulationTests
     public async Task Should_Succeed_Correctly_By_Default()
     {
 
-        var results = await new Simulation("test", async (_) =>
+        var results = await new Simulation("test", async _ =>
         {
             await Task.Delay(0);
             return new Result(true);
@@ -32,7 +32,7 @@ public class SimulationTests
     public async Task Should_Fail_Correctly_By_Default()
     {
 
-        var results = await new Simulation("test", async (_) =>
+        var results = await new Simulation("test", async _ =>
         {
             await Task.Delay(0);
             return new Result(false);
@@ -48,7 +48,7 @@ public class SimulationTests
     public async Task Uncaught_Exception_Should_Fail_Correctly_By_Default()
     {
 
-        var results = await new Simulation("test", (_) =>
+        var results = await new Simulation("test", _ =>
         {
             throw new Exception();
         })
@@ -90,7 +90,7 @@ public class SimulationTests
 
         ActivitySource.AddActivityListener(activityListener);
 
-        var results = await new Simulation("test", async (_) =>
+        var results = await new Simulation("test", async _ =>
         {
             await Task.Delay(0);
             return new Result(true);
@@ -131,7 +131,7 @@ public class SimulationTests
 
         ActivitySource.AddActivityListener(activityListener);
 
-        var results = await new Simulation("test", async (_) =>
+        var results = await new Simulation("test", async _ =>
         {
             await Task.Delay(0);
             return new Result(true);
@@ -148,7 +148,7 @@ public class SimulationTests
     public async Task Should_Keep_Constant_Rate()
     {
 
-        var results = await new Simulation("test", async (_) =>
+        var results = await new Simulation("test", async _ =>
         {
             await Task.Delay(100);
             return new Result(true);
@@ -165,7 +165,7 @@ public class SimulationTests
     public async Task Should_Increase_Rate()
     {
 
-        var results = await new Simulation("test", async (_) =>
+        var results = await new Simulation("test", async _ =>
         {
             await Task.Delay(1000);
             return new Result(true);
@@ -181,7 +181,7 @@ public class SimulationTests
     public async Task Should_Accept_Multiple_Intervals()
     {
 
-        var results = await new Simulation("test", async (_) =>
+        var results = await new Simulation("test", async _ =>
         {
             await Task.Delay(0);
             return new Result(true);
