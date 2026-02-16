@@ -17,7 +17,7 @@
 Add the package via NuGet:
 
 ```bash
-dotnet add package Simulate
+dotnet package add Simulate
 ````
 
 ## Usage
@@ -64,7 +64,7 @@ using OpenTelemetry.Logs;
 using Microsoft.Extensions.Logging;
 
 var serviceName = "Simulate";
-var serviceVersion = "0.0.5";
+var serviceVersion = "0.0.7";
 
 // Configure logging
 using var loggerFactory = LoggerFactory.Create(builder =>
