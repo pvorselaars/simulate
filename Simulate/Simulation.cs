@@ -16,7 +16,7 @@ namespace Simulate
     public class Simulation
     {
         private const string ServiceName = "Simulate";
-        private const string ServiceVersion = "0.0.6";
+        private const string ServiceVersion = "0.0.7";
 
         private readonly Func<ILogger, ValueTask<bool>> scenario;
         private readonly string name;
@@ -144,6 +144,25 @@ namespace Simulate
             public long MedianDuration { get; set; } = 0;
             public long MaxDuration { get; set; } = 0;
             public long MinDuration { get; set; } = 0;
+
+            public Dictionary<string, long> Quantiles = new Dictionary<string, long>();
+            public long IQR => Quantiles.TryGetValue("p75", out long p75) && Quantiles.TryGetValue("p25", out long p25) ? p75 - p25 : 0;
+            public double MedianSkewness => StandardDeviation > 0 ? 3*(MeanDuration - MedianDuration) / StandardDeviation : 0;
+            public double ModeSkewness => StandardDeviation > 0 ? (MeanDuration - MinDuration) / StandardDeviation : 0;
+            public double StandardError => StandardDeviation / Math.Sqrt(TotalIterations);
+
+            public IEnumerable<SimulationResult> Results { get; set; } = [];
+
+            public void ToCSV(string filePath)
+            {
+                using var writer = new StreamWriter(filePath);
+                writer.WriteLine("Iteration,Success,Duration");
+                foreach (var result in Results)
+                {
+                    writer.WriteLine($"{result.Iteration},{result.Success},{result.Duration}");
+                }
+            }
+
         }
 
         /// <summary>
@@ -176,23 +195,42 @@ namespace Simulate
                 }
             }
 
+            if (results.Count == 0)
+                return Results;
+
+            Results.Results = results;
             Results.TotalIterations = (uint)results.Count;
             Results.Successes = results.Count(r => r.Success);
             Results.Failures = results.Count(r => !r.Success);
-            Results.MeanDuration = results.Count > 0 ? results.Average(r => r.Duration) : 0;
-            Results.StandardDeviation = results.Count > 0 ? Math.Sqrt(results.Average(r => Math.Pow(r.Duration - Results.MeanDuration, 2))) : 0;
-            Results.MedianDuration = results.Count > 0 ? results.OrderBy(r => r.Duration).ElementAt(results.Count / 2).Duration : 0;
+            Results.MeanDuration = results.Average(r => r.Duration);
+            Results.StandardDeviation = Math.Sqrt(results.Average(r => Math.Pow(r.Duration - Results.MeanDuration, 2)));
             Results.MaxDuration = results.Count > 0 ? results.Max(r => r.Duration) : 0;
             Results.MinDuration = results.Count > 0 ? results.Min(r => r.Duration) : 0;
 
-            Console.WriteLine("Total Iterations: {0}", Results.TotalIterations);
+            var sortedResults = results.OrderBy(r => r.Duration);
+            Results.MedianDuration = sortedResults.ElementAt(results.Count / 2).Duration;
+            Results.Quantiles["p25"] = sortedResults.ElementAt((int)(results.Count * 0.25)).Duration;
+            Results.Quantiles["p50"] = Results.MedianDuration;
+            Results.Quantiles["p75"] = sortedResults.ElementAt((int)(results.Count * 0.75)).Duration;
+            Results.Quantiles["p80"] = sortedResults.ElementAt((int)(results.Count * 0.8)).Duration;
+            Results.Quantiles["p90"] = sortedResults.ElementAt((int)(results.Count * 0.9)).Duration;
+            Results.Quantiles["p95"] = sortedResults.ElementAt((int)(results.Count * 0.95)).Duration;
+            Results.Quantiles["p99"] = sortedResults.ElementAt((int)(results.Count * 0.99)).Duration;
+            Results.Quantiles["p99.9"] = sortedResults.ElementAt((int)(results.Count * 0.999)).Duration;
+
+            Console.WriteLine("Total iterations: {0}", Results.TotalIterations);
             Console.WriteLine("Successes: {0}", Results.Successes);
             Console.WriteLine("Failures: {0}", Results.Failures);
-            Console.WriteLine("Mean Duration (ms): {0}", Results.MeanDuration);
-            Console.WriteLine("Standard Deviation (ms): {0}", Results.StandardDeviation);
-            Console.WriteLine("Median Duration (ms): {0}", Results.MedianDuration);
-            Console.WriteLine("Max Duration (ms): {0}", Results.MaxDuration);
-            Console.WriteLine("Min Duration (ms): {0}", Results.MinDuration);
+            Console.WriteLine("Mean duration (ms): {0}", Results.MeanDuration);
+            Console.WriteLine("Standard deviation (ms): {0}", Results.StandardDeviation);
+            Console.WriteLine("Median duration (ms): {0}", Results.MedianDuration);
+            Console.WriteLine("Max duration (ms): {0}", Results.MaxDuration);
+            Console.WriteLine("Min duration (ms): {0}", Results.MinDuration);
+            Console.WriteLine("Quantiles (ms):");
+            foreach (var quantile in Results.Quantiles)
+            {
+                Console.WriteLine("  {0}: {1}", quantile.Key, quantile.Value);
+            }
 
             return Results;
         }
