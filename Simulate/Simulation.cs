@@ -5,12 +5,6 @@ using Microsoft.Extensions.Logging;
 namespace Simulate
 {
     /// <summary>
-    /// Represents the outcome of a single simulation execution.
-    /// </summary>
-    /// <param name="Success">Indicates whether the simulation succeeded.</param>
-    public record Result(bool Success);
-
-    /// <summary>
     /// Runs a simulation scenario multiple times, tracking metrics and results.
     /// Supports parallel execution, metrics collection, and rate-controlled runs.
     /// </summary>
@@ -22,9 +16,9 @@ namespace Simulate
     public class Simulation
     {
         private const string ServiceName = "Simulate";
-        private const string ServiceVersion = "0.0.5";
+        private const string ServiceVersion = "0.0.6";
 
-        private readonly Func<ILogger, ValueTask<Result>> scenario;
+        private readonly Func<ILogger, ValueTask<bool>> scenario;
         private readonly string name;
 
         private static readonly ActivitySource ActivitySource = new(ServiceName, ServiceVersion);
@@ -33,9 +27,10 @@ namespace Simulate
         private static readonly Counter<long> SuccessCounter = Meter.CreateCounter<long>("simulations.ok", description: "Total number of successful simulations");
         private static readonly Counter<long> FailureCounter = Meter.CreateCounter<long>("simulations.fail", description: "Total number of failed simulations");
         private static readonly Histogram<long> DurationHistogram = Meter.CreateHistogram<long>("simulations.duration", unit: "ms", description: "Duration of simulations in milliseconds");
+        private readonly List<SimulationInterval> intervals = [];
 
         public Simulation(string name,
-                          Func<ILogger, ValueTask<Result>> scenario,
+                          Func<ILogger, ValueTask<bool>> scenario,
                           ILoggerFactory? loggerFactory = null)
         {
             this.name = name;
@@ -49,23 +44,20 @@ namespace Simulate
             });
 
             Logger = loggerFactory.CreateLogger<Simulation>();
-            Results = new SimulationResults(name);
         }
 
-        private readonly List<SimulationInterval> intervals = [];
-
         /// <summary>
-        /// Gets the aggregated results of the simulation runs.
+        /// Gets the aggregated results of the simulation after execution.
         /// </summary>
-        public SimulationResults Results { get; }
+        public SimulationResults Results { get; set; } = new();
 
         /// <summary>
         /// Executes the simulation copies in parallel, collecting metrics and results.
         /// </summary>
-        private async Task Simulate(double copies)
+        private async Task<IEnumerable<SimulationResult>> Simulate(double copies, uint iteration = 1)
         {
             var tags = KeyValuePair.Create<string, object?>("scenario", name);
-            var simulations = new List<Task<Result>>(capacity: (int)copies);
+            var simulations = new List<Task<SimulationResult>>(capacity: (int)copies);
 
             for (long i = 0; i < copies; i++)
             {
@@ -75,7 +67,7 @@ namespace Simulate
 
                     var sw = Stopwatch.StartNew();
 
-                    Result result;
+                    bool result;
 
                     try
                     {
@@ -84,35 +76,34 @@ namespace Simulate
                     catch (Exception e)
                     {
                         Logger.LogError(e, "Scenario '{Scenario}' failed:", name);
-                        result = new Result(false);
+                        result = false;
                     }
-
 
                     sw.Stop();
 
                     DurationHistogram.Record(sw.ElapsedMilliseconds, tags);
-                    Results.Duration += sw.ElapsedMilliseconds;
 
-                    if (result.Success)
+                    if (result)
                     {
-                        Results.Success();
                         SuccessCounter.Add(1, tags);
                     }
                     else
                     {
-                        Results.Failure();
                         FailureCounter.Add(1, tags);
                     }
 
-                    Results.Count();
-
-                    return result;
+                    return new SimulationResult
+                    {
+                        Iteration = iteration,
+                        Success = result,
+                        Duration = sw.ElapsedMilliseconds
+                    };
                 });
 
                 simulations.Add(simulation);
             }
 
-            await Task.WhenAll(simulations);
+            return await Task.WhenAll(simulations);
         }
 
         /// <summary>
@@ -122,79 +113,38 @@ namespace Simulate
         /// <param name="Duration">The length of time to run the simulation interval.</param>
         /// <param name="Copies">The initial number of simulation copies to run concurrently. Must be at least 1.</param>
         /// <param name="Rate">The rate at which the number of copies increases per second during the interval.</param>
-        public class SimulationInterval(TimeSpan duration, double copies, double rate)
+        public class SimulationInterval(TimeSpan duration, double copies, double rate, uint iterations = uint.MaxValue)
         {
             public TimeSpan Duration { get; set; } = duration;
             public double Copies { get; set; } = copies;
             public double Rate { get; set; } = rate;
+            public uint Iterations { get; set; } = iterations;
         }
 
         /// <summary>
-        /// Holds aggregated results of multiple simulation runs.
-        /// Thread-safe incrementing for success and failure counts.
+        /// Represents the result of a single simulation execution, including whether it succeeded and how long it took.
         /// </summary>
-        /// <remarks>
-        /// Initializes a new instance of the <see cref="Results"/> class.
-        /// </remarks>
-        /// <param name="name">Name of the simulation scenario.</param>
-        public class SimulationResults(string name)
+        public class SimulationResult
         {
-
-            /// <summary>
-            /// Gets the name of the simulation scenario.
-            /// </summary>
-            public string Name { get; set; } = name;
-
-            private long _successes;
-            private long _failures;
-            private long _total;
-
-            /// <summary>
-            /// Gets the total number of successful simulation runs.
-            /// </summary>
-            public long Successes => _successes;
-
-            /// <summary>
-            /// Gets the total number of failed simulation runs.
-            /// </summary>
-            public long Failures => _failures;
-
-            /// <summary>
-            /// Gets the total number of simulation runs.
-            /// </summary>
-            public long Total => _total;
-
-            /// <summary>
-            /// Total duration in milliseconds
-            /// </summary>
-            internal long Duration;
-
-            /// <summary>
-            /// Gets the mean duration in milliseconds
-            /// </summary>
-            public long MeanDuration => meanDuration;
-
-            /// <summary>
-            /// Mean duration in milliseconds
-            /// </summary>
-            internal long meanDuration;
-
-            /// <summary>
-            /// Atomically increments the success count.
-            /// </summary>
-            internal void Success() => Interlocked.Increment(ref _successes);
-
-            /// <summary>
-            /// Atomically increments the failure count.
-            /// </summary>
-            internal void Failure() => Interlocked.Increment(ref _failures);
-
-            /// <summary>
-            /// Atomically increments the total count.
-            /// </summary>
-            internal void Count() => Interlocked.Increment(ref _total);
+            public uint Iteration { get; set; }
+            public bool Success { get; set; }
+            public long Duration { get; set; }
         }
 
+        /// <summary>
+        /// Represents the aggregated results of a simulation run, including total iterations, successes, failures, and duration statistics.
+        /// </summary>
+        public class SimulationResults
+        {
+            public uint TotalIterations { get; set; } = 0;
+            public long Successes { get; set; } = 0;
+            public long Failures { get; set; } = 0;
+            public double MeanDuration { get; set; } = 0;
+            public double StandardDeviation { get; set; } = 0;
+            public long MedianDuration { get; set; } = 0;
+            public long MaxDuration { get; set; } = 0;
+            public long MinDuration { get; set; } = 0;
+        }
 
         /// <summary>
         /// Runs the simulation according to configured copies, duration, and rate.
@@ -203,6 +153,7 @@ namespace Simulate
         /// <returns>The aggregated simulation results.</returns>
         public async Task<SimulationResults> Run()
         {
+            var results = new List<SimulationResult>();
             if (intervals.Count == 0)
                 intervals.Add(new SimulationInterval(TimeSpan.Zero, 1, 0));
 
@@ -210,20 +161,38 @@ namespace Simulate
             {
                 if (interval.Duration == TimeSpan.Zero)
                 {
-                    await Simulate(interval.Copies);
+                    var run = await Simulate(interval.Copies);
+                    results.AddRange(run);
                     continue;
                 }
 
-
                 var stopwatch = Stopwatch.StartNew();
-                while (stopwatch.Elapsed < interval.Duration)
+                uint iteration = 1;
+                while (stopwatch.Elapsed < interval.Duration && iteration++ <= interval.Iterations)
                 {
                     var copies = Math.Floor(stopwatch.Elapsed.TotalSeconds * interval.Rate);
-                    await Simulate(interval.Copies + copies);
+                    var run = await Simulate(interval.Copies + copies, iteration);
+                    results.AddRange(run);
                 }
             }
 
-            Results.meanDuration = Results.Total > 0 ? Results.Duration / Results.Total : 0;
+            Results.TotalIterations = (uint)results.Count;
+            Results.Successes = results.Count(r => r.Success);
+            Results.Failures = results.Count(r => !r.Success);
+            Results.MeanDuration = results.Count > 0 ? results.Average(r => r.Duration) : 0;
+            Results.StandardDeviation = results.Count > 0 ? Math.Sqrt(results.Average(r => Math.Pow(r.Duration - Results.MeanDuration, 2))) : 0;
+            Results.MedianDuration = results.Count > 0 ? results.OrderBy(r => r.Duration).ElementAt(results.Count / 2).Duration : 0;
+            Results.MaxDuration = results.Count > 0 ? results.Max(r => r.Duration) : 0;
+            Results.MinDuration = results.Count > 0 ? results.Min(r => r.Duration) : 0;
+
+            Console.WriteLine("Total Iterations: {0}", Results.TotalIterations);
+            Console.WriteLine("Successes: {0}", Results.Successes);
+            Console.WriteLine("Failures: {0}", Results.Failures);
+            Console.WriteLine("Mean Duration (ms): {0}", Results.MeanDuration);
+            Console.WriteLine("Standard Deviation (ms): {0}", Results.StandardDeviation);
+            Console.WriteLine("Median Duration (ms): {0}", Results.MedianDuration);
+            Console.WriteLine("Max Duration (ms): {0}", Results.MaxDuration);
+            Console.WriteLine("Min Duration (ms): {0}", Results.MinDuration);
 
             return Results;
         }
@@ -238,9 +207,29 @@ namespace Simulate
         public Simulation RunFor(TimeSpan duration, long copies = 1, double rate = 0)
         {
             if (copies < 0)
-                throw new ArgumentOutOfRangeException("A negative number of simulation copies is not supported.");
+                throw new ArgumentOutOfRangeException(nameof(copies), "A negative number of simulation copies is not supported.");
 
             intervals.Add(new SimulationInterval(duration, copies, rate));
+
+            return this;
+        }
+
+        /// <summary> 
+        /// Configures the simulation to run for a given number of iterations, with an optional number of copies and rate of increase.
+        /// Each iteration runs the specified number of copies concurrently.
+        /// </summary>
+        /// <param name="iterations">Number of iterations to run the simulation for (minimum 1).</param>
+        /// <param name="copies">Number of simulation copies to run concurrently for each iteration (minimum 0).</param>
+        /// <param name="rate">Rate to increase the number of copies per second during the iterations.</param>
+        public Simulation RunFor(uint iterations, long copies = 1, double rate = 0)
+        {
+            if (copies < 0)
+                throw new ArgumentOutOfRangeException(nameof(copies), "A negative number of simulation copies is not supported.");
+
+            if (iterations < 1)
+                throw new ArgumentOutOfRangeException(nameof(iterations), "A negative or zero number of simulation iterations is not supported.");
+
+            intervals.Add(new SimulationInterval(TimeSpan.MaxValue, copies, rate, iterations));
 
             return this;
         }

@@ -19,7 +19,7 @@ public class SimulationTests
         var results = await new Simulation("test", async _ =>
         {
             await Task.Delay(0);
-            return new Result(true);
+            return true;
         })
         .Run();
 
@@ -35,7 +35,7 @@ public class SimulationTests
         var results = await new Simulation("test", async _ =>
         {
             await Task.Delay(0);
-            return new Result(false);
+            return false;
         })
         .Run();
 
@@ -93,7 +93,7 @@ public class SimulationTests
         var results = await new Simulation("test", async _ =>
         {
             await Task.Delay(0);
-            return new Result(true);
+            return true;
         })
         .Run();
 
@@ -134,7 +134,7 @@ public class SimulationTests
         var results = await new Simulation("test", async _ =>
         {
             await Task.Delay(0);
-            return new Result(true);
+            return true;
         })
         .Run();
 
@@ -151,7 +151,7 @@ public class SimulationTests
         var results = await new Simulation("test", async _ =>
         {
             await Task.Delay(100);
-            return new Result(true);
+            return true;
         })
         .RunFor(TimeSpan.FromMilliseconds(1000), 1)
         .Run();
@@ -168,7 +168,7 @@ public class SimulationTests
         var results = await new Simulation("test", async _ =>
         {
             await Task.Delay(1000);
-            return new Result(true);
+            return true;
         })
         .RunFor(duration: TimeSpan.FromSeconds(3), copies: 0, rate: 1)
         .Run();
@@ -184,13 +184,30 @@ public class SimulationTests
         var results = await new Simulation("test", async _ =>
         {
             await Task.Delay(0);
-            return new Result(true);
+            return true;
         })
         .RunFor(duration: TimeSpan.Zero, copies: 6)
         .RunFor(duration: TimeSpan.Zero, copies: 6)
         .Run();
 
         Assert.AreEqual(12, results.Successes);
+    }
+
+    [TestMethod]
+    [Description("Ensures that a specific number of iterations is supported.")]
+    public async Task Should_Support_Specific_Number_Of_Iterations()
+    {
+
+        var results = await new Simulation("test", async _ =>
+        {
+            await Task.Delay(0);
+            return true;
+        })
+        .RunFor(iterations: 3, copies: 1)
+        .Run();
+
+        Assert.AreEqual(3U, results.TotalIterations);
+        Assert.AreEqual(3, results.Successes);
     }
 
 }
