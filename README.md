@@ -2,18 +2,17 @@
 
 **Simulate** is a lightweight and extensible .NET simulation framework designed for running and measuring concurrent task executions. It supports structured logging, metrics, and tracing to help you analyze simulation outcomes and performance with full observability.
 
-## ✨ Features
+## Features
 
-- 📈 Run simulations with a configurable **duration**, **copy count**, and **increasing rate**
-- 🎯 Supports:
+- Run simulations with a configurable **duration**, **number of iterations**, **copy count**, and **increasing rate**
+- Supports:
   - `System.Diagnostics.Metrics` for metrics
   - `System.Diagnostics.ActivitySource` for tracing
   - `ILogger` for structured logging
-- 🧪 Built-in result tracking with thread-safe success/failure counts
-- 📊 Emits OpenTelemetry-compatible metrics and spans
-- ⚙️ Easy to test and extend
+- Emits OpenTelemetry-compatible metrics and spans
+- Easy to test and extend
 
-## 📦 Installation
+## Installation
 
 Add the package via NuGet:
 
@@ -21,14 +20,14 @@ Add the package via NuGet:
 dotnet add package Simulate
 ````
 
-## 🚀 Usage
+## Usage
 
 ```csharp
 var simulation = await new Simulation("example", async logger =>
 {
     logger.LogInformation("Relevant information");
     await Task.Delay(100); // Simulated task
-    return new Result(true); // Simulation result
+    return true; // Successful simulation result
 })
 .RunFor(duration: TimeSpan.FromSeconds(5), copies: 5, rate: 2.0)
 .Run();
@@ -37,7 +36,7 @@ Console.WriteLine($"Successes: {simulation.Results.Successes}");
 Console.WriteLine($"Failures: {simulation.Results.Failures}");
 ```
 
-## 📊 Metrics
+## Metrics
 
 Simulate emits three main metrics:
 
@@ -51,7 +50,7 @@ All metrics are tagged with:
 
 * `scenario` – the name of the simulation
 
-## 🌐 Exporting with OpenTelemetry
+## Exporting with OpenTelemetry
 
 You can integrate OpenTelemetry to export traces, metrics, and logs from `Simulate` to the console or any OpenTelemetry-compatible backend (like Jaeger, Prometheus, or OTLP).
 
@@ -110,13 +109,13 @@ Place this configuration before running your simulation:
 await new Simulation("example", async _ =>
 {
     await Task.Delay(100);
-    return new Result(true);
+    return true;
 }, loggerFactory)
 .RunFor(TimeSpan.FromSeconds(3), copies: 5, rate: 2)
 .Run();
 ```
 
-## 🧪 Testing
+## Testing
 
 Use `MeterListener`, `ActivityListener`, and structured log capturing to test your simulation results.
 
@@ -137,7 +136,7 @@ public async Task Should_Record_Metrics()
     var results = await new Simulation("test", async () =>
     {
         await Task.Delay(10);
-        return new Result(true);
+        return true;
     })
     .RunFor(TimeSpan.FromSeconds(1), copies: 1)
     .Run();
