@@ -1,275 +1,338 @@
 ﻿using System.Diagnostics;
-using System.Diagnostics.Metrics;
 using Microsoft.Extensions.Logging;
 
 namespace Simulate
 {
     /// <summary>
-    /// Runs a simulation scenario multiple times, tracking metrics and results.
-    /// Supports parallel execution, metrics collection, and rate-controlled runs.
+    /// Runs a scenario with a number of independent virtual users. Every user is set up once
+    /// (for example a logged in browser), then loops over the scenario on its own, so a slow
+    /// iteration of one user never holds back the others.
     /// </summary>
+    /// <typeparam name="TUser">The state one virtual user carries between iterations.</typeparam>
     /// <remarks>
-    /// Initializes a new instance of the <see cref="Simulation"/> class.
+    /// Without <see cref="RunFor(TimeSpan)"/> or <see cref="RunFor(uint)"/> every user runs the scenario once.
+    /// Use <see cref="Simulation"/> when the scenario needs no per-user state.
     /// </remarks>
-    /// <param name="name">The name of the simulation scenario.</param>
-    /// <param name="scenario">The asynchronous simulation function to execute.</param>
-    public class Simulation
+    public class Simulation<TUser>
     {
-        private const string ServiceName = "Simulate";
-        private const string ServiceVersion = "0.0.7";
-
-        private readonly Func<ILogger, ValueTask<bool>> scenario;
         private readonly string name;
+        private readonly Func<int, ILogger, ValueTask<TUser>> setup;
+        private readonly Func<TUser, ILogger, ValueTask<bool>> scenario;
+        private readonly Func<TUser, ValueTask>? teardown;
+        private readonly ILogger logger;
 
-        private static readonly ActivitySource ActivitySource = new(ServiceName, ServiceVersion);
-        private static readonly Meter Meter = new(ServiceName, ServiceVersion);
-        private readonly ILogger Logger;
-        private static readonly Counter<long> SuccessCounter = Meter.CreateCounter<long>("simulations.ok", description: "Total number of successful simulations");
-        private static readonly Counter<long> FailureCounter = Meter.CreateCounter<long>("simulations.fail", description: "Total number of failed simulations");
-        private static readonly Histogram<long> DurationHistogram = Meter.CreateHistogram<long>("simulations.duration", unit: "ms", description: "Duration of simulations in milliseconds");
-        private readonly List<SimulationInterval> intervals = [];
+        private int users = 1;
+        private TimeSpan rampUp = TimeSpan.Zero;
+        private TimeSpan thinkMin = TimeSpan.Zero;
+        private TimeSpan thinkMax = TimeSpan.Zero;
+        private uint warmupIterations;
+        private int maxParallelSetup = 4;
+        private TimeSpan? duration;
+        private uint? iterationsPerUser;
 
+        /// <param name="name">The name of the simulation scenario.</param>
+        /// <param name="setup">Creates the state of one user. Receives the zero-based user index. Runs before the timed part and is not measured.</param>
+        /// <param name="scenario">One iteration for one user.</param>
+        /// <param name="teardown">Cleans up one user. Runs even when the simulation fails.</param>
+        /// <param name="loggerFactory">Where to log to; defaults to the console.</param>
         public Simulation(string name,
-                          Func<ILogger, ValueTask<bool>> scenario,
+                          Func<int, ILogger, ValueTask<TUser>> setup,
+                          Func<TUser, ILogger, ValueTask<bool>> scenario,
+                          Func<TUser, ValueTask>? teardown = null,
                           ILoggerFactory? loggerFactory = null)
         {
             this.name = name;
+            this.setup = setup;
             this.scenario = scenario;
+            this.teardown = teardown;
 
-            // Use provided factory or default to console
             loggerFactory ??= LoggerFactory.Create(builder =>
             {
                 builder.SetMinimumLevel(LogLevel.Information);
                 builder.AddConsole();
             });
 
-            Logger = loggerFactory.CreateLogger<Simulation>();
+            logger = loggerFactory.CreateLogger("Simulate.Simulation");
+        }
+
+        /// <summary>Gets the aggregated results after <see cref="Run"/>. Warm-up iterations are not included.</summary>
+        public SimulationResults Results { get; } = new();
+
+        /// <summary>Sets the number of concurrent virtual users (at least 1, default 1).</summary>
+        public Simulation<TUser> WithUsers(int users)
+        {
+            ArgumentOutOfRangeException.ThrowIfLessThan(users, 1);
+            this.users = users;
+            return this;
         }
 
         /// <summary>
-        /// Gets the aggregated results of the simulation after execution.
+        /// Spreads the start of the users evenly over this period: user i starts after i / users of it,
+        /// so the first user starts immediately. Counts towards the duration set by <see cref="RunFor(TimeSpan)"/>.
         /// </summary>
-        public SimulationResults Results { get; set; } = new();
+        public Simulation<TUser> RampUp(TimeSpan period)
+        {
+            ArgumentOutOfRangeException.ThrowIfLessThan(period, TimeSpan.Zero);
+            rampUp = period;
+            return this;
+        }
+
+        /// <summary>Waits a fixed time between the iterations of a user.</summary>
+        public Simulation<TUser> ThinkTime(TimeSpan time) => ThinkTime(time, time);
+
+        /// <summary>Waits a random time between min and max between the iterations of a user.</summary>
+        public Simulation<TUser> ThinkTime(TimeSpan min, TimeSpan max)
+        {
+            ArgumentOutOfRangeException.ThrowIfLessThan(min, TimeSpan.Zero);
+            ArgumentOutOfRangeException.ThrowIfLessThan(max, min);
+            thinkMin = min;
+            thinkMax = max;
+            return this;
+        }
 
         /// <summary>
-        /// Executes the simulation copies in parallel, collecting metrics and results.
+        /// Runs this many first iterations per user that are not recorded (no metrics, not in the results),
+        /// so cold caches and JIT do not skew the numbers. They still run, and their traces carry <c>simulate.warmup</c>.
         /// </summary>
-        private async Task<IEnumerable<SimulationResult>> Simulate(double copies, uint iteration = 1)
+        public Simulation<TUser> Warmup(uint iterationsPerUser)
         {
-            var tags = KeyValuePair.Create<string, object?>("scenario", name);
-            var simulations = new List<Task<SimulationResult>>(capacity: (int)copies);
+            warmupIterations = iterationsPerUser;
+            return this;
+        }
 
-            for (long i = 0; i < copies; i++)
+        /// <summary>Limits how many users are set up at the same time (default 4), for example to not flood a login server.</summary>
+        public Simulation<TUser> MaxParallelSetup(int count)
+        {
+            ArgumentOutOfRangeException.ThrowIfLessThan(count, 1);
+            maxParallelSetup = count;
+            return this;
+        }
+
+        /// <summary>
+        /// Stops starting new iterations after this time, measured from the start of the timed part
+        /// (after all users are set up). Iterations in flight complete.
+        /// </summary>
+        public Simulation<TUser> RunFor(TimeSpan duration)
+        {
+            ArgumentOutOfRangeException.ThrowIfLessThanOrEqual(duration, TimeSpan.Zero);
+            this.duration = duration;
+            return this;
+        }
+
+        /// <summary>Stops each user after this many iterations, warm-up iterations included. Can be combined with a duration: whichever comes first.</summary>
+        public Simulation<TUser> RunFor(uint iterationsPerUser)
+        {
+            ArgumentOutOfRangeException.ThrowIfZero(iterationsPerUser);
+            this.iterationsPerUser = iterationsPerUser;
+            return this;
+        }
+
+        /// <summary>
+        /// Sets up the users, runs them concurrently and tears them down. If a user cannot be set up,
+        /// the exception is thrown after the users that were set up are torn down; no iterations run.
+        /// Cancelling stops the users after their current iteration and returns the results so far.
+        /// </summary>
+        public async Task<SimulationResults> Run(CancellationToken cancellationToken = default)
+        {
+            var iterations = duration is null ? iterationsPerUser ?? 1 : iterationsPerUser;
+
+            var state = new TUser?[users];
+            var ready = new bool[users];
+
+            try
             {
-                var simulation = Task.Run(async () =>
-                {
-                    using var activity = ActivitySource.StartActivity(name);
+                await SetupUsers(state, ready, cancellationToken);
 
-                    var sw = Stopwatch.StartNew();
+                var clock = Stopwatch.StartNew();
+                var perUser = await Task.WhenAll(Enumerable.Range(0, users)
+                    .Select(index => Task.Run(() => RunUser(index, state[index]!, iterations, clock, cancellationToken), CancellationToken.None)));
 
-                    bool result;
+                var results = perUser.SelectMany(r => r).ToList();
 
-                    try
-                    {
-                        result = await scenario.Invoke(Logger);
-                    }
-                    catch (Exception e)
-                    {
-                        Logger.LogError(e, "Scenario '{Scenario}' failed:", name);
-                        result = false;
-                    }
+                Results.Name = name;
+                Results.Users = users;
+                Results.Elapsed = clock.Elapsed;
 
-                    sw.Stop();
+                if (results.Count == 0)
+                    return Results;
 
-                    DurationHistogram.Record(sw.ElapsedMilliseconds, tags);
+                Results.Summarize(results);
+                Results.Print();
 
-                    if (result)
-                    {
-                        SuccessCounter.Add(1, tags);
-                    }
-                    else
-                    {
-                        FailureCounter.Add(1, tags);
-                    }
-
-                    return new SimulationResult
-                    {
-                        Iteration = iteration,
-                        Success = result,
-                        Duration = sw.ElapsedMilliseconds
-                    };
-                });
-
-                simulations.Add(simulation);
-            }
-
-            return await Task.WhenAll(simulations);
-        }
-
-        /// <summary>
-        /// Represents a configuration interval for running simulations,
-        /// specifying the duration, initial number of copies, and the rate of increase.
-        /// </summary>
-        /// <param name="Duration">The length of time to run the simulation interval.</param>
-        /// <param name="Copies">The initial number of simulation copies to run concurrently. Must be at least 1.</param>
-        /// <param name="Rate">The rate at which the number of copies increases per second during the interval.</param>
-        public class SimulationInterval(TimeSpan duration, double copies, double rate, uint iterations = uint.MaxValue)
-        {
-            public TimeSpan Duration { get; set; } = duration;
-            public double Copies { get; set; } = copies;
-            public double Rate { get; set; } = rate;
-            public uint Iterations { get; set; } = iterations;
-        }
-
-        /// <summary>
-        /// Represents the result of a single simulation execution, including whether it succeeded and how long it took.
-        /// </summary>
-        public class SimulationResult
-        {
-            public uint Iteration { get; set; }
-            public bool Success { get; set; }
-            public long Duration { get; set; }
-        }
-
-        /// <summary>
-        /// Represents the aggregated results of a simulation run, including total iterations, successes, failures, and duration statistics.
-        /// </summary>
-        public class SimulationResults
-        {
-            public uint TotalIterations { get; set; } = 0;
-            public long Successes { get; set; } = 0;
-            public long Failures { get; set; } = 0;
-            public double MeanDuration { get; set; } = 0;
-            public double StandardDeviation { get; set; } = 0;
-            public long MedianDuration { get; set; } = 0;
-            public long MaxDuration { get; set; } = 0;
-            public long MinDuration { get; set; } = 0;
-
-            public Dictionary<string, long> Quantiles = new Dictionary<string, long>();
-            public long IQR => Quantiles.TryGetValue("p75", out long p75) && Quantiles.TryGetValue("p25", out long p25) ? p75 - p25 : 0;
-            public double MedianSkewness => StandardDeviation > 0 ? 3*(MeanDuration - MedianDuration) / StandardDeviation : 0;
-            public double ModeSkewness => StandardDeviation > 0 ? (MeanDuration - MinDuration) / StandardDeviation : 0;
-            public double StandardError => StandardDeviation / Math.Sqrt(TotalIterations);
-
-            public IEnumerable<SimulationResult> Results { get; set; } = [];
-
-            public void ToCSV(string filePath)
-            {
-                using var writer = new StreamWriter(filePath);
-                writer.WriteLine("Iteration,Success,Duration");
-                foreach (var result in Results)
-                {
-                    writer.WriteLine($"{result.Iteration},{result.Success},{result.Duration}");
-                }
-            }
-
-        }
-
-        /// <summary>
-        /// Runs the simulation according to configured copies, duration, and rate.
-        /// If a duration is specified, increases the number of copies over time by the rate.
-        /// </summary>
-        /// <returns>The aggregated simulation results.</returns>
-        public async Task<SimulationResults> Run()
-        {
-            var results = new List<SimulationResult>();
-            if (intervals.Count == 0)
-                intervals.Add(new SimulationInterval(TimeSpan.Zero, 1, 0));
-
-            foreach (var interval in intervals)
-            {
-                if (interval.Duration == TimeSpan.Zero)
-                {
-                    var run = await Simulate(interval.Copies);
-                    results.AddRange(run);
-                    continue;
-                }
-
-                var stopwatch = Stopwatch.StartNew();
-                uint iteration = 1;
-                while (stopwatch.Elapsed < interval.Duration && iteration++ <= interval.Iterations)
-                {
-                    var copies = Math.Floor(stopwatch.Elapsed.TotalSeconds * interval.Rate);
-                    var run = await Simulate(interval.Copies + copies, iteration);
-                    results.AddRange(run);
-                }
-            }
-
-            if (results.Count == 0)
                 return Results;
-
-            Results.Results = results;
-            Results.TotalIterations = (uint)results.Count;
-            Results.Successes = results.Count(r => r.Success);
-            Results.Failures = results.Count(r => !r.Success);
-            Results.MeanDuration = results.Average(r => r.Duration);
-            Results.StandardDeviation = Math.Sqrt(results.Average(r => Math.Pow(r.Duration - Results.MeanDuration, 2)));
-            Results.MaxDuration = results.Count > 0 ? results.Max(r => r.Duration) : 0;
-            Results.MinDuration = results.Count > 0 ? results.Min(r => r.Duration) : 0;
-
-            var sortedResults = results.OrderBy(r => r.Duration);
-            Results.MedianDuration = sortedResults.ElementAt(results.Count / 2).Duration;
-            Results.Quantiles["p25"] = sortedResults.ElementAt((int)(results.Count * 0.25)).Duration;
-            Results.Quantiles["p50"] = Results.MedianDuration;
-            Results.Quantiles["p75"] = sortedResults.ElementAt((int)(results.Count * 0.75)).Duration;
-            Results.Quantiles["p80"] = sortedResults.ElementAt((int)(results.Count * 0.8)).Duration;
-            Results.Quantiles["p90"] = sortedResults.ElementAt((int)(results.Count * 0.9)).Duration;
-            Results.Quantiles["p95"] = sortedResults.ElementAt((int)(results.Count * 0.95)).Duration;
-            Results.Quantiles["p99"] = sortedResults.ElementAt((int)(results.Count * 0.99)).Duration;
-            Results.Quantiles["p99.9"] = sortedResults.ElementAt((int)(results.Count * 0.999)).Duration;
-
-            Console.WriteLine("Total iterations: {0}", Results.TotalIterations);
-            Console.WriteLine("Successes: {0}", Results.Successes);
-            Console.WriteLine("Failures: {0}", Results.Failures);
-            Console.WriteLine("Mean duration (ms): {0}", Results.MeanDuration);
-            Console.WriteLine("Standard deviation (ms): {0}", Results.StandardDeviation);
-            Console.WriteLine("Median duration (ms): {0}", Results.MedianDuration);
-            Console.WriteLine("Max duration (ms): {0}", Results.MaxDuration);
-            Console.WriteLine("Min duration (ms): {0}", Results.MinDuration);
-            Console.WriteLine("Quantiles (ms):");
-            foreach (var quantile in Results.Quantiles)
+            }
+            finally
             {
-                Console.WriteLine("  {0}: {1}", quantile.Key, quantile.Value);
+                await TeardownUsers(state, ready);
+            }
+        }
+
+        private async Task SetupUsers(TUser?[] state, bool[] ready, CancellationToken cancellationToken)
+        {
+            using var gate = new SemaphoreSlim(maxParallelSetup);
+
+            await Task.WhenAll(Enumerable.Range(0, users).Select(async index =>
+            {
+                await gate.WaitAsync(cancellationToken);
+                try
+                {
+                    state[index] = await setup(index, logger);
+                    ready[index] = true;
+                    logger.LogInformation("Set up user {User} of scenario '{Scenario}'", index, name);
+                }
+                finally
+                {
+                    gate.Release();
+                }
+            }));
+        }
+
+        private async Task TeardownUsers(TUser?[] state, bool[] ready)
+        {
+            if (teardown is null)
+                return;
+
+            await Task.WhenAll(Enumerable.Range(0, users).Where(index => ready[index]).Select(async index =>
+            {
+                try
+                {
+                    await teardown(state[index]!);
+                }
+                catch (Exception e)
+                {
+                    logger.LogError(e, "Teardown of user {User} of scenario '{Scenario}' failed:", index, name);
+                }
+            }));
+        }
+
+        private async Task<List<SimulationResult>> RunUser(int index, TUser user, uint? iterations, Stopwatch clock, CancellationToken cancellationToken)
+        {
+            // This task has its own copy of the execution context: dropping the caller's activity here
+            // makes every iteration a root trace without touching the caller.
+            Activity.Current = null;
+
+            var results = new List<SimulationResult>();
+
+            try
+            {
+                var startDelay = TimeSpan.FromTicks(rampUp.Ticks * index / users);
+                if (startDelay > TimeSpan.Zero)
+                    await Task.Delay(startDelay, cancellationToken);
+
+                for (uint iteration = 1; !cancellationToken.IsCancellationRequested; iteration++)
+                {
+                    if (iterations is not null && iteration > iterations)
+                        break;
+
+                    if (duration is not null && clock.Elapsed >= duration)
+                        break;
+
+                    var warmup = iteration <= warmupIterations;
+                    var result = await RunIteration(index, iteration, user, warmup);
+
+                    if (!warmup)
+                        results.Add(result);
+
+                    var think = NextThinkTime();
+                    if (think > TimeSpan.Zero && (iterations is null || iteration < iterations))
+                    {
+                        if (duration is not null)
+                            think = TimeSpan.FromTicks(Math.Min(think.Ticks, (duration.Value - clock.Elapsed).Ticks));
+
+                        if (think > TimeSpan.Zero)
+                            await Task.Delay(think, cancellationToken);
+                    }
+                }
+            }
+            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+            {
+                // stopped on request, keep what has been measured
             }
 
-            return Results;
+            return results;
         }
 
-        /// <summary>
-        /// Configures the simulation to run for a given duration, initial number of copies, and rate of increase.
-        /// </summary>
-        /// <param name="duration">Duration to run the simulation for.</param>
-        /// <param name="copies">Initial number of simulation copies per iteration (minimum 0).</param>
-        /// <param name="rate">Rate to increase the number of copies per second.</param>
-        /// <returns>The current simulation instance for fluent chaining.</returns>
-        public Simulation RunFor(TimeSpan duration, long copies = 1, double rate = 0)
+        private async Task<SimulationResult> RunIteration(int index, uint iteration, TUser user, bool warmup)
         {
-            if (copies < 0)
-                throw new ArgumentOutOfRangeException(nameof(copies), "A negative number of simulation copies is not supported.");
+            // Activity.Current is cleared per user task (see RunUser), so every iteration is its own trace.
+            using var activity = SimulateTelemetry.ActivitySource.StartActivity(name);
+            activity?.SetTag("simulate.user", index);
+            activity?.SetTag("simulate.iteration", iteration);
+            if (warmup)
+                activity?.SetTag("simulate.warmup", true);
 
-            intervals.Add(new SimulationInterval(duration, copies, rate));
+            var sw = Stopwatch.StartNew();
 
-            return this;
+            bool success;
+            string? failure = null;
+
+            try
+            {
+                success = await scenario(user, logger);
+                if (!success)
+                    failure = "The scenario returned false";
+            }
+            catch (Exception e)
+            {
+                logger.LogError(e, "Scenario '{Scenario}' failed for user {User}:", name, index);
+                activity?.AddException(e);
+                success = false;
+                failure = e.Message;
+            }
+
+            sw.Stop();
+
+            if (!success)
+                activity?.SetStatus(ActivityStatusCode.Error, failure);
+
+            if (!warmup)
+            {
+                var scenarioTag = KeyValuePair.Create<string, object?>("scenario", name);
+                var outcomeTag = KeyValuePair.Create<string, object?>("success", success);
+
+                SimulateTelemetry.DurationHistogram.Record(sw.ElapsedMilliseconds, scenarioTag, outcomeTag);
+
+                if (success)
+                    SimulateTelemetry.SuccessCounter.Add(1, scenarioTag);
+                else
+                    SimulateTelemetry.FailureCounter.Add(1, scenarioTag);
+            }
+
+            return new SimulationResult
+            {
+                Iteration = iteration,
+                Success = success,
+                Duration = sw.ElapsedMilliseconds,
+                User = index
+            };
         }
 
-        /// <summary> 
-        /// Configures the simulation to run for a given number of iterations, with an optional number of copies and rate of increase.
-        /// Each iteration runs the specified number of copies concurrently.
-        /// </summary>
-        /// <param name="iterations">Number of iterations to run the simulation for (minimum 1).</param>
-        /// <param name="copies">Number of simulation copies to run concurrently for each iteration (minimum 0).</param>
-        /// <param name="rate">Rate to increase the number of copies per second during the iterations.</param>
-        public Simulation RunFor(uint iterations, long copies = 1, double rate = 0)
+        private TimeSpan NextThinkTime()
         {
-            if (copies < 0)
-                throw new ArgumentOutOfRangeException(nameof(copies), "A negative number of simulation copies is not supported.");
+            if (thinkMax <= thinkMin)
+                return thinkMin;
 
-            if (iterations < 1)
-                throw new ArgumentOutOfRangeException(nameof(iterations), "A negative or zero number of simulation iterations is not supported.");
+            return TimeSpan.FromTicks(Random.Shared.NextInt64(thinkMin.Ticks, thinkMax.Ticks + 1));
+        }
+    }
 
-            intervals.Add(new SimulationInterval(TimeSpan.MaxValue, copies, rate, iterations));
-
-            return this;
+    /// <summary>
+    /// A <see cref="Simulation{TUser}"/> for scenarios that need no per-user state.
+    /// </summary>
+    public class Simulation : Simulation<object?>
+    {
+        /// <param name="name">The name of the simulation scenario.</param>
+        /// <param name="scenario">One iteration.</param>
+        /// <param name="loggerFactory">Where to log to; defaults to the console.</param>
+        public Simulation(string name,
+                          Func<ILogger, ValueTask<bool>> scenario,
+                          ILoggerFactory? loggerFactory = null)
+            : base(name,
+                   (_, _) => ValueTask.FromResult<object?>(null),
+                   (_, logger) => scenario(logger),
+                   teardown: null,
+                   loggerFactory)
+        {
         }
     }
 }

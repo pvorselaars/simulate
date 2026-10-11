@@ -144,8 +144,8 @@ public class SimulationTests
     }
 
     [TestMethod]
-    [Description("Ensures that simulations correctly keep the rate constant.")]
-    public async Task Should_Keep_Constant_Rate()
+    [Description("Ensures that a simulation keeps iterating until the duration has passed.")]
+    public async Task Should_Keep_Iterating_For_The_Duration()
     {
 
         var results = await new Simulation("test", async _ =>
@@ -153,44 +153,10 @@ public class SimulationTests
             await Task.Delay(100);
             return true;
         })
-        .RunFor(TimeSpan.FromMilliseconds(1000), 1)
+        .RunFor(TimeSpan.FromMilliseconds(1000))
         .Run();
 
-
-        Assert.AreEqual(10, results.Successes);
-    }
-
-    [TestMethod]
-    [Description("Ensures that simulations correctly increase the rate: r = t + 1 for 0 < t < 3")]
-    public async Task Should_Increase_Rate()
-    {
-
-        var results = await new Simulation("test", async _ =>
-        {
-            await Task.Delay(1000);
-            return true;
-        })
-        .RunFor(duration: TimeSpan.FromSeconds(3), copies: 0, rate: 1)
-        .Run();
-
-        Assert.AreEqual(3, results.Successes);
-    }
-
-    [TestMethod]
-    [Description("Ensures that simulation intervals are correctly handled.")]
-    public async Task Should_Accept_Multiple_Intervals()
-    {
-
-        var results = await new Simulation("test", async _ =>
-        {
-            await Task.Delay(0);
-            return true;
-        })
-        .RunFor(duration: TimeSpan.Zero, copies: 6)
-        .RunFor(duration: TimeSpan.Zero, copies: 6)
-        .Run();
-
-        Assert.AreEqual(12, results.Successes);
+        Assert.IsTrue(results.Successes is >= 9 and <= 11, $"Expected about 10 iterations, ran {results.Successes}");
     }
 
     [TestMethod]
@@ -203,11 +169,30 @@ public class SimulationTests
             await Task.Delay(0);
             return true;
         })
-        .RunFor(iterations: 3, copies: 1)
+        .RunFor(iterationsPerUser: 3)
         .Run();
 
         Assert.AreEqual(3U, results.TotalIterations);
         Assert.AreEqual(3, results.Successes);
+    }
+
+    [TestMethod]
+    [Description("Ensures that every user runs the scenario once when no duration or iterations are set.")]
+    public async Task Should_Run_Once_Per_User_By_Default()
+    {
+        var invocations = 0;
+
+        var results = await new Simulation("test", async _ =>
+        {
+            await Task.Delay(0);
+            Interlocked.Increment(ref invocations);
+            return true;
+        })
+        .WithUsers(3)
+        .Run();
+
+        Assert.AreEqual(3, invocations);
+        Assert.AreEqual(3U, results.TotalIterations);
     }
 
 }
