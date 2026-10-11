@@ -13,8 +13,8 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       id-token: write  # enable GitHub OIDC token issuance for this job
-
-   steps:
+    
+    steps:
       - name: Checkout repository
         uses: actions/checkout@v4
 
